@@ -3,13 +3,14 @@ NVCC      ?= nvcc
 NVDISASM  ?= nvdisasm
 PYTHON    ?= python3
 
-.PHONY: help check regs sass mma occupancy clean
+.PHONY: help check regs sass mma occupancy simt clean
 
 help:
 	@echo "make check      - 检查 nvcc / ptxas / nvdisasm 是否就绪"
 	@echo "make regs       - 对比不同寄存器上限下的编译输出"
 	@echo "make sass       - 反汇编，看 FFMA 与 HMMA"
 	@echo "make occupancy  - 计算 SM 占用率（纯 CPU）"
+	@echo "make simt       - 观察 threadIdx/blockIdx/warp/lane 映射（纯 CPU）"
 	@echo "make clean      - 清理产物"
 
 check:
@@ -38,6 +39,10 @@ sass:
 # 不需要 GPU
 occupancy:
 	@$(PYTHON) 03_occupancy/occupancy.py --arch $(CUDA_ARCH) --threads 256
+
+# SIMT 映射：threadIdx / blockIdx / warp / lane（纯 CPU，不需要显卡）
+simt:
+	@$(PYTHON) 06_simt/warp_map.py
 
 clean:
 	@rm -f /tmp/mma.cubin

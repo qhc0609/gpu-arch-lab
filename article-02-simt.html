@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>GPU SIMT 并行执行模型</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:677px;margin:0 auto;padding:24px 18px 60px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:16px;line-height:1.85;color:#2b2b2b;letter-spacing:0.3px;">
+
+<h1 style="font-size:23px;font-weight:700;line-height:1.45;color:#111;margin:8px 0 6px;">GPU SIMT 并行执行模型</h1>
+<p style="font-size:13px;color:#999;margin:0 0 26px;">以 NVIDIA GPU 为例，一张图 + 七个问题讲清楚</p>
+
+<p style="margin:18px 0;">上一篇拆了 GPU 的硬件——SM、CUDA Core、Tensor Core。硬件摆在那儿，怎么让它跑起来、怎么跑得快、什么时候会突然变慢，是另一回事。</p>
+
+<p style="margin:18px 0;">这一篇讲执行模型：一条指令怎么同时作用在成千上万个线程上，为什么 GPU 要靠"线程多"取胜，又为什么一个 if 就能把速度砍半。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">先看一张图</h2>
+
+<p style="margin:18px 0;">下面这张图分三段：上段是 Grid → Block → Warp → Thread 的层级，中段对比 SIMD 和 SIMT，下段是一个 warp 遇到分支时发生的事。后面的问题都围着它讲。</p>
+
+<p style="margin:18px 0;"><img src="simt-diagram.png" alt="SIMT 执行模型：层级、SIMD/SIMT 对比、Warp Divergence" style="max-width:100%;height:auto;display:block;margin:0 auto;border-radius:6px;"></p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">一、什么是 SIMD？</h2>
+
+<p style="margin:18px 0;">SIMD 是 <strong style="color:#111;">Single Instruction, Multiple Data</strong>，单指令多数据。一句话：一条指令，同时作用在多份数据上。</p>
+
+<p style="margin:18px 0;">CPU 里早就有这东西——SSE/AVX 指令集。一条 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">addps</code> 指令，一次把 8 个 float 加起来。硬件上是一组宽寄存器（128/256 位）加一条指令驱动多个 ALU。</p>
+
+<p style="margin:18px 0;">关键点：SIMD 里"哪些数据一起算"是<strong style="color:#111;">程序员或编译器显式决定</strong>的——你得把数据打包塞进向量寄存器，代码里看得见向量。</p>
+
+<p style="margin:18px 0;">打个比方：一个班 32 个人，老师喊"每个人把自己桌上的数加 1"，一声令下大家一起动。前提是每个人做的是同一个动作。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">二、什么是 SIMT？</h2>
+
+<p style="margin:18px 0;">SIMT 是 <strong style="color:#111;">Single Instruction, Multiple Threads</strong>，单指令多线程，NVIDIA 提出来的。</p>
+
+<p style="margin:18px 0;">它和 SIMD 很像，都是"一条指令作用多份数据"，区别在<strong style="color:#111;">谁负责打包</strong>：</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">SIMD</strong>：程序员手动把数据打包成向量，代码里写的是向量操作。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">SIMT</strong>：程序员写的是最普通的标量代码——每个线程有自己的变量、自己的 if/for，看起来跟写单线程程序一样。是硬件在背后把 32 个线程组成一个 warp，让它们锁步执行同一条指令。</p>
+
+<p style="margin:18px 0;">所以 SIMT 对程序员是"透明"的：你不用手动打包，甚至不用知道 warp 的存在（但知道了能写得更快）。一句话区分：<strong style="color:#111;">SIMD 是数据并行，程序员管向量；SIMT 是线程并行，硬件管打包。</strong></p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">三、什么是 Thread、Warp、Block、Grid？</h2>
+
+<p style="margin:18px 0;">从大到小四级，记住这张层级：</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">Grid</strong>：一次 kernel 启动的全部线程。你写 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">&lt;&lt;&lt;grid, block&gt;&gt;&gt;</code> 时，grid 就是它。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">Block（线程块）</strong>：Grid 切成的块。一个 block 只在一个 SM 上跑，block 内线程可以用 Shared Memory 通信、用 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">__syncthreads()</code> 同步。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">Warp（线程束）</strong>：32 个连续线程。这是硬件调度和执行的最小单位。一个 block 的线程会按 32 个一组切成若干个 warp。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">Thread（线程）</strong>：最小执行单元。每个线程有自己的寄存器，能读自己的 threadIdx。</p>
+
+<p style="margin:18px 0;">拿工程里的参数举例：<strong style="color:#111;">2 个 block、每 block 64 线程</strong>。</p>
+
+<table style="border-collapse:collapse;width:100%;margin:18px 0;font-size:14px;">
+<thead>
+<tr><th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">层级</th><th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">数量</th><th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">怎么来的</th></tr>
+</thead>
+<tbody>
+<tr><td style="border:1px solid #e3e5e8;padding:9px 10px;font-weight:600;">Grid</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">1</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">一次 kernel 启动</td></tr>
+<tr><td style="border:1px solid #e3e5e8;padding:9px 10px;font-weight:600;">Block</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">2</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">grid = 2</td></tr>
+<tr><td style="border:1px solid #e3e5e8;padding:9px 10px;font-weight:600;">Warp</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">4</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">128 线程 ÷ 32</td></tr>
+<tr><td style="border:1px solid #e3e5e8;padding:9px 10px;font-weight:600;">Thread</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">128</td><td style="border:1px solid #e3e5e8;padding:9px 10px;">2 × 64</td></tr>
+</tbody>
+</table>
+
+<p style="margin:18px 0;">全局线程号公式一定要记住，后面全靠它：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">gid  = blockIdx.x * blockDim.x + threadIdx.x
+warp = gid / 32
+lane = gid % 32</pre>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">四、一个 Warp 如何执行指令？</h2>
+
+<p style="margin:18px 0;">warp 里的 32 个线程<strong style="color:#111;">锁步（lockstep）</strong>执行同一条指令：</p>
+
+<p style="margin:18px 0;">取指一次，32 个线程各自用自己的寄存器、自己的数据执行。一个 warp 一条指令，理想情况下 32 个线程同时完成。</p>
+
+<p style="margin:18px 0;">关键：<strong style="color:#111;">warp 既是调度单位，也是执行单位</strong>。SM 里有很多 warp，Warp Scheduler 每个周期挑一个"就绪"的 warp 发射指令。</p>
+
+<p style="margin:18px 0;">举个例子：<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">a[i] = b[i] + c[i]</code>。32 个 lane 各算一个 i，一条加法指令就搞定 32 个元素。这就是 GPU 快的来源——不是单个线程快，而是<strong style="color:#111;">一条指令同时喂饱 32 个计算单元</strong>。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">五、GPU 如何调度大量线程？</h2>
+
+<p style="margin:18px 0;">分两层看：</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">硬件层</strong>：GigaThread 引擎把 grid 里的 block 分给各个 SM；SM 再把 block 里的 warp 分给 4 个分区，每个分区一个 Warp Scheduler。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">时间层</strong>：Warp Scheduler 每个周期从"就绪"的 warp 里挑一个发射。某个 warp 卡在访存（几百个周期），立刻切到另一个 warp——这叫<strong style="color:#111;">延迟隐藏</strong>。</p>
+
+<p style="margin:18px 0;">三个关键点：</p>
+
+<p style="margin:18px 0;">1. 一个 SM 同时能挂多少 warp 是有限的，受寄存器、Shared Memory 约束，这就是 occupancy。</p>
+
+<p style="margin:18px 0;">2. warp 之间切换几乎零成本：每个 warp 的寄存器本来就在 SM 里，不用像 CPU 线程那样存上下文再恢复。</p>
+
+<p style="margin:18px 0;">3. 所以 GPU 靠"很多 warp 轮着上"来掩盖延迟，而不是靠单线程跑得快。</p>
+
+<p style="margin:18px 0;">举个数字：A100（sm_80）一个 SM 最多 64 个 warp（2048 线程），4 个调度器，每个管 16 个 warp 槽位。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">六、Warp Divergence 是什么？</h2>
+
+<p style="margin:18px 0;">Warp Divergence（warp 分歧）：一个 warp 里的 32 个线程，因为 if/else 或循环条件不同，走了不同的分支。</p>
+
+<p style="margin:18px 0;">问题在于：SIMT 要求 32 个线程锁步走同一条指令。如果一个 warp 里有的进 if、有的进 else，硬件没法同时执行两条路径，只能：</p>
+
+<p style="margin:18px 0;">先执行 if 分支——走 else 的线程被"屏蔽"（masked），空转；再执行 else 分支——走 if 的线程空转；最后汇合。</p>
+
+<p style="margin:18px 0;">结果：<strong style="color:#111;">两条路径串行化，最坏情况下时间翻倍</strong>。图的下段画的就是这个。</p>
+
+<p style="margin:18px 0;">一个典型例子：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">if (threadIdx.x % 2) { A } else { B }</pre>
+
+<p style="margin:18px 0;">一个 warp 内奇偶各一半，这个 if 就会让 32 个线程分成两半，两条路径各跑一次，等于两倍时间。</p>
+
+<p style="margin:18px 0;">怎么避免：</p>
+
+<p style="margin:18px 0;">让分支的粒度对齐 32——按 blockIdx 分，而不是按 threadIdx 分，这样一个 warp 内的线程就走同一条路；短小的 if 用"谓词执行"（predication），不产生真正分支；必要时做数据重排，把同类数据聚到一起。</p>
+
+<p style="margin:18px 0;">一句话：<strong style="color:#111;">SIMT 的快，建立在"32 个线程走同一条路"上；一旦分叉，快就打了折。</strong></p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">七、实践：编写 CUDA 程序，观察线程索引、Warp 和 Block 的关系</h2>
+
+<p style="margin:18px 0;">思路很简单：启动 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">&lt;&lt;&lt;2, 64&gt;&gt;&gt;</code>，让每个线程算出自己的 gid / warp / lane 并打印出来，肉眼就能看出层级。核心就三行，就是前面那个公式：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">int gid  = blockIdx.x * blockDim.x + threadIdx.x;
+int warp = gid / 32;
+int lane = gid % 32;</pre>
+
+<p style="margin:18px 0;">完整代码在 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">06_simt/warp_map.cu</code>。为了输出有序，kernel 只负责算，主机端按 gid 顺序打印。</p>
+
+<p style="margin:18px 0;">有 GPU 的话：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">nvcc -arch=sm_80 06_simt/warp_map.cu -o warp_map
+./warp_map</pre>
+
+<p style="margin:18px 0;">输出节选（每 32 行一组，lane 从 0 回到 31，warp 号加 1，这就是 warp 的边界）：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">launch &lt;&lt;&lt;grid=2, block=64&gt;&gt;&gt;  128 threads, 4 warps
+
+ gid block thread warp lane
+----------------------------------
+   0     0      0    0    0
+  ...
+  31     0     31    0   31
+----------------------------------
+  32     0     32    1    0
+  ...
+  63     0     63    1   31
+----------------------------------
+  64     1      0    2    0
+  ...
+  95     1     31    2   31
+----------------------------------
+  96     1     32    3    0
+  ...
+ 127     1     63    3   31</pre>
+
+<p style="margin:18px 0;">没有 GPU 也能看：工程里有个纯 Python 版本 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">06_simt/warp_map.py</code>，用同样的公式把映射算出来，不需要显卡：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">python3 06_simt/warp_map.py</pre>
+
+<p style="margin:18px 0;">两边输出完全一致。你可以拿它验证自己对 gid / warp / lane 的理解，也可以改 grid 和 block 的数值，看层级怎么跟着变。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:34px 0 14px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">配套工程</h2>
+
+<p style="margin:18px 0;">本文的图和说法都来自同一个开源工程，大部分实验不需要显卡：</p>
+
+<p style="margin:18px 0;"><code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">https://github.com/qhc0609/gpu-arch-lab</code></p>
+
+<p style="margin:18px 0;">仓库结构（本篇新增 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">06_simt/</code>）：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">00_chip_parts/   芯片由哪些硬件组成（纯讲解脚本）
+01_env/         openEuler 无卡安装 CUDA Toolkit（只装编译器）
+02_ptx_sass/    CUDA Core(FFMA) 与 Tensor Core(HMMA) 指令对比
+03_occupancy/   纯 Python 计算 SM 占用率
+04_cloud_probe/ 云上真机取证
+05_sim/         GPGPU-Sim 可选路线
+06_simt/        warp_map.cu（有卡跑）+ warp_map.py（无卡跑）
+simt-diagram.svg / .png      本篇的图
+article.html / article-02-simt.html   两篇文章</pre>
+
+<p style="margin:18px 0;">在你自己的机器上跑起来：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">git clone https://github.com/qhc0609/gpu-arch-lab.git
+cd gpu-arch-lab
+python3 06_simt/warp_map.py      # 不需要显卡，直接看映射</pre>
+
+<p style="margin:18px 0;">如果你改了内容想提交回仓库（需要你自己的账号权限）：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.6;color:#24292e;">git add -A
+git commit -m "docs: 新增 SIMT 执行模型文章"
+git push   # 推到 qhc0609/gpu-arch-lab</pre>
+
+<p style="margin:18px 0;font-size:13px;color:#999;border-top:1px solid #eee;padding-top:14px;">代码与数据：github.com/qhc0609/gpu-arch-lab　｜　环境：openEuler 24.03 + CUDA 12.4（无 GPU）</p>
+
+</div>
+</body>
+</html>

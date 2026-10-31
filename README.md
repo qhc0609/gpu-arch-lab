@@ -26,7 +26,13 @@
 03_occupancy/    纯 Python 计算 SM 占用率
 04_cloud_probe/  云上取证的 deviceQuery
 05_sim/          可选：GPGPU-Sim 周期级仿真
+06_simt/         SIMT 执行模型：warp_map.cu（有卡）/ warp_map.py（无卡）
 ```
+
+## 文章
+
+- 第一篇《GPU 内部硬件架构与计算单元组成》→ `article.html` + `gpu-arch-diagram.*`
+- 第二篇《GPU SIMT 并行执行模型》→ `article-02-simt.html` + `simt-diagram.*`
 
 ## 快速开始
 
@@ -44,6 +50,9 @@ make sass
 
 # 4. 占用率曲线（纯 CPU）
 make occupancy
+
+# 5. SIMT 映射：threadIdx / blockIdx / warp / lane 的关系（纯 CPU）
+make simt
 ```
 
 云上取证部分见 `04_cloud_probe/probe.sh`，建议选最便宜的 T4 实例，
