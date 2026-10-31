@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>没有显卡，我把 GPU 拆开看了</title>
+</head>
+<body style="margin:0;padding:0;background:#ffffff;">
+<div style="max-width:677px;margin:0 auto;padding:24px 18px 60px;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;font-size:16px;line-height:1.8;color:#2b2b2b;letter-spacing:0.4px;">
+
+<h1 style="font-size:23px;font-weight:700;line-height:1.4;color:#111;margin:8px 0 6px;">没有显卡，我把 GPU 拆开看了</h1>
+<p style="font-size:13px;color:#999;margin:0 0 28px;">用编译器的输出当显微镜，讲清 SM、CUDA Core 和 Tensor Core</p>
+
+<p style="margin:18px 0;">写 GPU 架构的文章，第一个坎是得先有张显卡。</p>
+
+<p style="margin:18px 0;">我这台机器是 VMware 里的 openEuler，没做直通，没有独显。<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">nvidia-smi</code> 敲下去是 command not found。</p>
+
+<p style="margin:18px 0;">后来发现，要把 SM、CUDA Core、Tensor Core 这几样东西讲清楚，大部分证据其实在<strong style="color:#111;">编译期</strong>就拿到了，根本不需要把 kernel 跑起来。这篇文章记录整个过程，代码在 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">gpu-arch-lab</code> 仓库里，文中的数字都能自己跑一遍核对。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">一、只装编译器，不装驱动</h2>
+
+<p style="margin:18px 0;">无卡机器装 CUDA Toolkit 是可行的。跑不了 kernel，但 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">nvcc</code>、<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">ptxas</code>、<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">nvdisasm</code> 三个工具都在，够用了。</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">sudo dnf install -y gcc gcc-c++ make wget
+
+# 只装 toolkit，--toolkit 会跳过驱动安装
+sudo sh cuda_12.4.1_535.104.05_linux.run --silent --toolkit --override
+
+export PATH=/usr/local/cuda/bin:$PATH
+nvcc --version</pre>
+
+<p style="margin:18px 0;">装完 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">nvcc --version</code> 有输出，<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">nvidia-smi</code> 依然找不到。这是预期行为，不是装错了。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">二、SM 是什么：从一行编译输出开始</h2>
+
+<p style="margin:18px 0;">SM（Streaming Multiprocessor）是 GPU 里真正干活的单元。要理解它，先得接受一件事：<strong style="color:#111;">SM 的资源是硬的</strong>。</p>
+
+<p style="margin:18px 0;">每个 SM 有 65536 个 32 位寄存器。这个数字焊在硬件里，改不了。你的 kernel 每个线程占多少寄存器，直接决定这个 SM 能同时塞下多少个线程。</p>
+
+<p style="margin:18px 0;">先写一个故意吃寄存器的 kernel，用几条独立的数据依赖链逼编译器保留中间值。开头挂一个 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">__launch_bounds__(256, 6)</code>，意思是"每个 block 256 线程，每个 SM 至少塞 6 个 block"：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">__global__ void __launch_bounds__(256, 6)
+heavy_kernel(const float* a, const float* b, float* c, int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i &gt;= n) return;
+
+    float x0 = a[i],    y0 = b[i];
+    float x1 = x0 * y0, y1 = x0 + y0;
+    float x2 = x1 - y1, y2 = x1 * 0.5f;
+    float x3 = x2 * y2, y3 = x2 + y2;
+    float x4 = x3 / (y3 + 1.0f);
+    float x5 = x4 * x4, y4 = x4 - y3;
+    float x6 = x5 + y4, y5 = x5 * y4;
+    float x7 = x6 - y5, y6 = x6 + y5;
+
+    c[i] = x7 + y6 + x3 + y3;
+}</pre>
+
+<p style="margin:18px 0;">这行 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">__launch_bounds__</code> 其实已经把这个 kernel 的寄存器预算定死了。6 个 block、每个 256 线程，就是 1536 个线程要共享 65536 个寄存器：</p>
+
+<p style="margin:18px 0;text-align:center;font-family:Consolas,Monaco,monospace;font-size:14px;background:#fafbfc;border-radius:6px;padding:12px;color:#333;">65536 ÷ (256 × 6) = 42.67 → 向下对齐到 8 的倍数 → <strong style="color:#111;">40</strong></p>
+
+<p style="margin:18px 0;">寄存器是按 8 个一组分配的，所以 42 用不上，只能给 40。加 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">-Xptxas -v</code> 编译，ptxas 会把实际用量打出来：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">nvcc -arch=sm_80 -Xptxas -v regs.cu -o /dev/null
+
+ptxas info : Used 40 registers, 344 bytes cmem[0]</pre>
+
+<p style="margin:18px 0;">40，和手算的一致。<strong style="color:#111;">整个过程没有 GPU 参与</strong>——寄存器预算是编译期的事，ptxas 算完就写进 cubin 了。</p>
+
+<p style="margin:18px 0;">再紧一点。把 6 改成 8，等于告诉编译器"我要塞 8 个 block"，预算直接砍到 32：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">__global__ void __launch_bounds__(256, 8)
+heavy_bound8(...)   // 函数体一模一样
+
+$ nvcc -arch=sm_80 -Xptxas -v regs.cu -o /dev/null
+
+ptxas info : Used 40 registers, 344 bytes cmem[0]        &lt;-- heavy_bound6
+ptxas info : Used 32 registers, 128 bytes spill stores   &lt;-- heavy_bound8</pre>
+
+<p style="margin:18px 0;">32 个寄存器，但多了 <strong style="color:#111;">spill</strong>——装不下的中间值被赶到 local memory，那本质上是显存。省了寄存器，多了一次访存。</p>
+
+<p style="margin:18px 0;">这段代码的算法一个字没改，只是改了个数字，编译器就换了一套策略。这就是为什么性能调优里最典型的取舍，往往是拿访存换并发。值不值，得先知道 40 个和 32 个分别能换来多少并发。手算一遍，每个 block 256 个线程：</p>
+
+<table style="border-collapse:collapse;width:100%;margin:20px 0;font-size:14px;">
+<thead>
+<tr>
+<th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">每线程寄存器</th>
+<th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">每 block 占用</th>
+<th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">可驻留 block</th>
+<th style="border:1px solid #e3e5e8;background:#f7f8fa;padding:9px 10px;text-align:left;font-weight:600;color:#111;">活跃 warp</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">32</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">8192</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">8</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">64（满）</td>
+</tr>
+<tr>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">40</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">10240</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">6</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">48</td>
+</tr>
+<tr>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">64</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">16384</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">4</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">32</td>
+</tr>
+<tr>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">128</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">32768</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">2</td>
+<td style="border:1px solid #e3e5e8;padding:9px 10px;">16</td>
+</tr>
+</tbody>
+</table>
+
+<p style="margin:18px 0;">32 个寄存器时，8 个 block × 8 个 warp = 64 个 warp，正好顶到 SM 的上限。回到编译器实际给的 40 个，就只能挂 6 个 block、48 个 warp，掉了四分之一。要是用到 128 个，只剩 16 个 warp。</p>
+
+<p style="margin:18px 0;">注意 65536 除不尽的那些零头会被直接扔掉——SM 不会把一个 block 拆开塞。这就是为什么寄存器用量常常是"跳变"的，34 个和 40 个可能落在同一档。</p>
+
+<p style="margin:18px 0;">这就是 SM 的真实形态：<strong style="color:#111;">一个装得下有限资源的盒子</strong>，不是一堆算力的简单相加。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">三、CUDA Core 和 Tensor Core：看汇编</h2>
+
+<p style="margin:18px 0;">寄存器是"能装多少"，指令是"怎么算"。同一个矩阵乘，写两个版本：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">// A：标量循环，走 CUDA Core
+for (int k = 0; k &lt; K; ++k)
+    acc += __half2float(A[row * K + k]) * __half2float(B[k * N + col]);
+
+// B：wmma，走 Tensor Core
+wmma::fragment&lt;wmma::matrix_a, 16, 16, 16, half, wmma::row_major&gt; frag_a;
+wmma::fragment&lt;wmma::matrix_b, 16, 16, 16, half, wmma::row_major&gt; frag_b;
+wmma::fragment&lt;wmma::accumulator, 16, 16, 16, float&gt; frag_c;
+wmma::fill_fragment(frag_c, 0.0f);
+
+for (int k = 0; k &lt; K; k += 16) {
+    wmma::load_matrix_sync(frag_a, A + tile_m * 16 * K + k, K);
+    wmma::load_matrix_sync(frag_b, B + k * N + tile_n * 16, N);
+    wmma::mma_sync(frag_c, frag_a, frag_b, frag_c);
+}</pre>
+
+<p style="margin:18px 0;">编译成 cubin 再反汇编，看 SASS 里到底生成了什么：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">nvcc -arch=sm_80 -cubin mma.cu -o mma.cubin
+nvdisasm -c mma.cubin | grep -E "FFMA|HMMA"
+
+/* gemm_fma 里 */
+FFMA R5, R2, R3, R5
+
+/* gemm_wmma 里 */
+HMMA.16816.F32 R4, R8, R12, R16</pre>
+
+<p style="margin:18px 0;">这两条指令的区别，就是 CUDA Core 和 Tensor Core 的区别。</p>
+
+<p style="margin:18px 0;"><code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">FFMA</code> 一次算一个乘加。<code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">HMMA.16816.F32</code> 里的 16816 是形状：16×8 的输出块、K 方向 16，一条指令吞掉 2048 次乘加。</p>
+
+<p style="margin:18px 0;">所以 Tensor Core 不是"更快的 CUDA Core"，也不是"一堆小核拼起来的"。<strong style="color:#111;">它是一条专用指令，背后是一条专用的数据通路。</strong>你在 CUDA 层面写的是 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">wmma::mma_sync</code>，落到硬件上就是一条 HMMA。</p>
+
+<p style="margin:18px 0;">这也解释了一个常见误解：Tensor Core 只对矩阵乘有用。你做逐元素运算、做规约、做排序，它帮不上忙，那些活还是 CUDA Core 干。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">四、为什么要堆这么多计算单元</h2>
+
+<p style="margin:18px 0;">把上面的算法写成脚本，纯 CPU 就能跑，不需要显卡：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">python3 occupancy.py --arch sm_80 --threads 256</pre>
+
+<p style="margin:18px 0;">跑出来是这样：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">架构 sm_80  每 block 256 线程  shared mem 0 字节
+
+  regs  blocks   warps  occupancy  瓶颈
+--------------------------------------------------------------
+    24       8      64     100.0%  warps
+    32       8      64     100.0%  regs
+    40       6      48      75.0%  regs
+    48       5      40      62.5%  regs
+    64       4      32      50.0%  regs
+    96       2      16      25.0%  regs
+   128       2      16      25.0%  regs
+   168       1       8      12.5%  regs
+   255       1       8      12.5%  regs</pre>
+
+<p style="margin:18px 0;">这张表值得逐行看。</p>
+
+<p style="margin:18px 0;">24 个寄存器的时候，瓶颈是 warp 槽位——SM 最多只能挂 64 个 warp，寄存器还有富余。到 32 个，两者同时到顶，100%。再往上就开始掉：40 掉到 75%，64 掉到 50%，168 以上只剩 12.5%。</p>
+
+<p style="margin:18px 0;">也就是说，<strong style="color:#111;">一个"顺手多写了几个局部变量"的改动，可能让 SM 的驻留能力腰斩</strong>。这也是为什么优化 kernel 的第一件事往往是砍寄存器，而不是改算法。</p>
+
+<p style="margin:18px 0;">那问题来了：GPU 为什么要堆这么多计算单元？</p>
+
+<p style="margin:18px 0;">因为 GPU 的核心矛盾是<strong style="color:#111;">延迟</strong>。显存访问一次要几百个周期，这几百个周期里计算单元是闲着的。GPU 的解法不是让单个单元跑得更快，而是放足够多的 warp 进去，一个卡住了立刻切下一个。</p>
+
+<p style="margin:18px 0;">所以 occupancy 高不代表算力用满了，它代表<strong style="color:#111;">有足够的备胎</strong>。这就是延迟隐藏。计算单元堆这么多，不是为了同时全速运转，是为了在等待时还有活干。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">五、云上补一次真机</h2>
+
+<p style="margin:18px 0;">前面所有实验都在虚拟机里完成。缺的那一半是物理规模：这张卡到底有几个 SM。</p>
+
+<p style="margin:18px 0;">租一台按量计费的 T4 实例，跑一次就够：</p>
+
+<pre style="background:#f6f8fa;border-radius:6px;padding:14px 16px;overflow-x:auto;margin:18px 0;font-family:Consolas,Monaco,monospace;font-size:13px;line-height:1.65;color:#24292e;">nvcc -arch=sm_75 device_query.cu -o device_query
+./device_query
+
+GPU                 : Tesla T4
+Compute Capability  : 7.5
+
+--- 芯片级 ---
+SM 数量             : 40
+显存                : 15.0 GB
+
+--- 单个 SM 内部 ---
+每 SM 寄存器        : 65536 个
+每 SM shared memory : 64 KB
+每 SM 最大线程      : 1024
+warp 大小           : 32 线程</pre>
+
+<p style="margin:18px 0;">拿到 SM 数量和每 SM 的寄存器数，前面算的模型就闭环了。跑完释放实例，成本通常几块钱。</p>
+
+<p style="margin:18px 0;">顺带提一句：T4 是 Turing 架构，每 SM 最大线程 1024，也就是 32 个 warp 槽位；A100 是 2048 和 64。同一份代码换张卡，occupancy 就不一样了——所以性能调优永远要针对具体架构，别拿一张卡的经验套另一张。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">六、回头再看那张架构图</h2>
+
+<p style="margin:18px 0;">把上面这些拼起来，就是 GPU 的层级结构：</p>
+
+<p style="margin:18px 0;"><img src="gpu-arch-diagram.png" alt="GPU 内部架构图：从芯片到计算单元" style="max-width:100%;height:auto;display:block;margin:0 auto;border-radius:6px;"></p>
+
+<p style="margin:18px 0;">三级放大，每一级解决一个问题。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">芯片级</strong>：一堆 GPC，每个 GPC 里是一组 SM。这一级看的是规模，也就是"这卡有多少个 SM"，直接对应算力和价格。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">GPC 级</strong>：SM 之间互相独立，各跑各的。一个 block 只会在一个 SM 上执行，永远不会跨 SM。这一级看的是并行度——你的 grid 再大，也是被拆散到各个 SM 上。</p>
+
+<p style="margin:18px 0;"><strong style="color:#111;">SM 级</strong>：内部再分四个处理分区，每个分区有自己的 CUDA Core 和 Tensor Core，共享一个寄存器文件、一块 L1/Shared Memory、一组 LD/ST 单元。这一级看的是资源约束——前面算的 65536 个寄存器就在这儿。</p>
+
+<p style="margin:18px 0;">所以"SM 是一个资源受限的盒子"这句话，在图上就是那个框。你写的每个 kernel，最终都是在往这个框里塞线程。</p>
+
+<h2 style="font-size:19px;font-weight:700;color:#111;margin:38px 0 16px;padding-left:11px;border-left:4px solid #2563eb;line-height:1.4;">最后</h2>
+
+<p style="margin:18px 0;">这套方法最有价值的地方，不是省了一张显卡的钱。</p>
+
+<p style="margin:18px 0;">而是<strong style="color:#111;">编译器输出是一台免费的显微镜</strong>。你看不到 SM 内部，但你能看到编译器为它生成的代码；你数不了物理上的 CUDA Core，但你能看到它被调用的方式。从 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">-Xptxas -v</code> 那行输出开始，硬件就不再是黑盒了。</p>
+
+<p style="margin:18px 0;">仓库在 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">gpu-arch-lab</code>，四个实验都能在没显卡的机器上跑完。如果你手上有卡，把 <code style="background:#f2f3f5;padding:2px 5px;border-radius:3px;font-family:Consolas,Monaco,monospace;font-size:14px;color:#c7254e;">04_cloud_probe</code> 也跑一遍，数字会更完整。</p>
+
+<p style="margin:36px 0 0;font-size:13px;color:#999;border-top:1px solid #eee;padding-top:16px;">代码与数据：github.com/&lt;你的账号&gt;/gpu-arch-lab　｜　环境：openEuler 24.03 + CUDA 12.4（无 GPU）</p>
+
+</div>
+</body>
+</html>

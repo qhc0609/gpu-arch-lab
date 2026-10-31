@@ -1,0 +1,19 @@
+# 编译产物
+*.o
+*.cubin
+*.ptx
+*.sass
+device_query
+/tmp/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

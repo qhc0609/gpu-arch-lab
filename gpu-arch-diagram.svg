@@ -1,0 +1,185 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" font-family="Microsoft YaHei, PingFang SC, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="820" fill="#ffffff"/>
+
+  <text x="40" y="48" font-size="25" font-weight="700" fill="#0f172a">GPU 内部架构：从芯片到计算单元</text>
+  <text x="40" y="74" font-size="13.5" fill="#64748b">三级放大 — GPU 芯片 → 一个 GPC → 一个 SM（Streaming Multiprocessor）</text>
+
+  <!-- ================= 面板 1 ================= -->
+  <rect x="30" y="100" width="330" height="600" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="195" y="130" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">① GPU 芯片</text>
+  <text x="195" y="151" text-anchor="middle" font-size="11" fill="#64748b">芯片内部由多个 GPC 组成，每个 GPC 里是 SM 阵列</text>
+
+  <!-- GPC 1 -->
+  <rect x="48" y="200" width="145" height="175" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="120" y="226" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">GPC</text>
+  <rect x="64" y="245" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="90" y="276" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="124" y="245" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="150" y="276" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="64" y="305" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="90" y="336" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="124" y="305" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="150" y="336" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+
+  <!-- GPC 2 -->
+  <rect x="200" y="200" width="145" height="175" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="272" y="226" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">GPC</text>
+  <rect x="216" y="245" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="242" y="276" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="276" y="245" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="302" y="276" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="216" y="305" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="242" y="336" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="276" y="305" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="302" y="336" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+
+  <!-- GPC 3 -->
+  <rect x="48" y="395" width="145" height="175" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="120" y="421" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">GPC</text>
+  <rect x="64" y="440" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="90" y="471" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="124" y="440" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="150" y="471" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="64" y="500" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="90" y="531" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="124" y="500" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="150" y="531" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+
+  <!-- GPC 4 -->
+  <rect x="200" y="395" width="145" height="175" rx="8" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="272" y="421" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">GPC</text>
+  <rect x="216" y="440" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="242" y="471" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="276" y="440" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="302" y="471" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="216" y="500" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="242" y="531" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+  <rect x="276" y="500" width="52" height="52" rx="5" fill="#e0f2fe" stroke="#7dd3fc"/>
+  <text x="302" y="531" text-anchor="middle" font-size="11" fill="#0369a1">SM</text>
+
+  <text x="195" y="620" text-anchor="middle" font-size="11" fill="#94a3b8">显存控制器、L2 缓存等未画出</text>
+  <text x="195" y="642" text-anchor="middle" font-size="11" fill="#94a3b8">SM 是独立调度单元，彼此并行工作</text>
+
+  <!-- 箭头 1 -->
+  <line x1="366" y1="400" x2="412" y2="400" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="389" y="390" text-anchor="middle" font-size="10.5" fill="#94a3b8">放大</text>
+
+  <!-- ================= 面板 2 ================= -->
+  <rect x="420" y="100" width="330" height="600" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="585" y="130" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">② 一个 GPC</text>
+  <text x="585" y="151" text-anchor="middle" font-size="11" fill="#64748b">内部是若干个 SM，SM 之间共享 L2，不共享寄存器</text>
+
+  <!-- 3x3 SM -->
+  <rect x="448" y="180" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="487" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="487" y="248" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <rect x="538" y="180" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="577" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="577" y="248" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <rect x="628" y="180" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="667" y="228" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="667" y="248" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+
+  <rect x="448" y="300" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="487" y="348" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="487" y="368" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <!-- 高亮这一个 -->
+  <rect x="534" y="296" width="86" height="113" rx="8" fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="6 4"/>
+  <rect x="538" y="300" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="577" y="348" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="577" y="368" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <rect x="628" y="300" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="667" y="348" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="667" y="368" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+
+  <rect x="448" y="420" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="487" y="468" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="487" y="488" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <rect x="538" y="420" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="577" y="468" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="577" y="488" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+  <rect x="628" y="420" width="78" height="105" rx="6" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="667" y="468" text-anchor="middle" font-size="13" font-weight="600" fill="#0369a1">SM</text>
+  <text x="667" y="488" text-anchor="middle" font-size="9.5" fill="#0c4a6e">独立调度</text>
+
+  <text x="585" y="570" text-anchor="middle" font-size="11" fill="#94a3b8">图中数量为示意，实际每个 GPC 的 SM 数因架构而异</text>
+  <text x="585" y="592" text-anchor="middle" font-size="11" fill="#94a3b8">一个 block 只会在一个 SM 上执行，不会跨 SM</text>
+
+  <!-- 箭头 2 -->
+  <line x1="756" y1="400" x2="802" y2="400" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="779" y="390" text-anchor="middle" font-size="10.5" fill="#94a3b8">放大</text>
+
+  <!-- ================= 面板 3 ================= -->
+  <rect x="810" y="100" width="360" height="600" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="990" y="130" text-anchor="middle" font-size="15" font-weight="600" fill="#0f172a">③ 一个 SM 的内部</text>
+  <text x="990" y="151" text-anchor="middle" font-size="11" fill="#64748b">以 GA102 为例：128 个 FP32 单元，4 个 Tensor Core</text>
+
+  <!-- 分区 1 -->
+  <rect x="828" y="175" width="150" height="125" rx="7" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="903" y="196" text-anchor="middle" font-size="10.5" fill="#64748b">处理分区 1</text>
+  <rect x="838" y="203" width="130" height="32" rx="4" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="903" y="224" text-anchor="middle" font-size="11" font-weight="600" fill="#1d4ed8">32 × FP32 Core</text>
+  <rect x="838" y="241" width="130" height="32" rx="4" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="903" y="262" text-anchor="middle" font-size="11" font-weight="600" fill="#b45309">1 × Tensor Core</text>
+
+  <!-- 分区 2 -->
+  <rect x="988" y="175" width="150" height="125" rx="7" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="1063" y="196" text-anchor="middle" font-size="10.5" fill="#64748b">处理分区 2</text>
+  <rect x="998" y="203" width="130" height="32" rx="4" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="1063" y="224" text-anchor="middle" font-size="11" font-weight="600" fill="#1d4ed8">32 × FP32 Core</text>
+  <rect x="998" y="241" width="130" height="32" rx="4" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="1063" y="262" text-anchor="middle" font-size="11" font-weight="600" fill="#b45309">1 × Tensor Core</text>
+
+  <!-- 分区 3 -->
+  <rect x="828" y="315" width="150" height="125" rx="7" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="903" y="336" text-anchor="middle" font-size="10.5" fill="#64748b">处理分区 3</text>
+  <rect x="838" y="343" width="130" height="32" rx="4" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="903" y="364" text-anchor="middle" font-size="11" font-weight="600" fill="#1d4ed8">32 × FP32 Core</text>
+  <rect x="838" y="381" width="130" height="32" rx="4" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="903" y="402" text-anchor="middle" font-size="11" font-weight="600" fill="#b45309">1 × Tensor Core</text>
+
+  <!-- 分区 4 -->
+  <rect x="988" y="315" width="150" height="125" rx="7" fill="#ffffff" stroke="#cbd5e1"/>
+  <text x="1063" y="336" text-anchor="middle" font-size="10.5" fill="#64748b">处理分区 4</text>
+  <rect x="998" y="343" width="130" height="32" rx="4" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="1063" y="364" text-anchor="middle" font-size="11" font-weight="600" fill="#1d4ed8">32 × FP32 Core</text>
+  <rect x="998" y="381" width="130" height="32" rx="4" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="1063" y="402" text-anchor="middle" font-size="11" font-weight="600" fill="#b45309">1 × Tensor Core</text>
+
+  <!-- 公共资源 -->
+  <rect x="828" y="458" width="310" height="40" rx="5" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="983" y="483" text-anchor="middle" font-size="11.5" fill="#334155">Warp Scheduler × 4　（每个分区一个，按 warp 轮转发射）</text>
+
+  <rect x="828" y="510" width="310" height="40" rx="5" fill="#ede9fe" stroke="#a78bfa"/>
+  <text x="983" y="535" text-anchor="middle" font-size="11.5" fill="#5b21b6">寄存器文件　65536 × 32-bit（硬上限，决定能装多少线程）</text>
+
+  <rect x="828" y="562" width="310" height="46" rx="5" fill="#dcfce7" stroke="#4ade80"/>
+  <text x="983" y="583" text-anchor="middle" font-size="11.5" fill="#15803d">L1 缓存 + Shared Memory</text>
+  <text x="983" y="599" text-anchor="middle" font-size="10" fill="#166534">同一块物理存储，可按需划分比例</text>
+
+  <rect x="828" y="620" width="310" height="36" rx="5" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="983" y="643" text-anchor="middle" font-size="11.5" fill="#334155">LD/ST 单元 × 16　（负责访存地址计算）</text>
+
+  <text x="990" y="676" text-anchor="middle" font-size="10.5" fill="#94a3b8">不同架构的分区数、核心数不同，分层结构一致</text>
+
+  <!-- 图例 -->
+  <line x1="40" y1="726" x2="1160" y2="726" stroke="#e2e8f0"/>
+  <rect x="40" y="744" width="16" height="16" rx="3" fill="#dbeafe" stroke="#60a5fa"/>
+  <text x="64" y="757" font-size="11.5" fill="#475569">FP32 CUDA Core</text>
+  <rect x="196" y="744" width="16" height="16" rx="3" fill="#fef3c7" stroke="#fbbf24"/>
+  <text x="220" y="757" font-size="11.5" fill="#475569">Tensor Core</text>
+  <rect x="336" y="744" width="16" height="16" rx="3" fill="#dcfce7" stroke="#4ade80"/>
+  <text x="360" y="757" font-size="11.5" fill="#475569">Shared Memory / L1</text>
+  <rect x="540" y="744" width="16" height="16" rx="3" fill="#ede9fe" stroke="#a78bfa"/>
+  <text x="564" y="757" font-size="11.5" fill="#475569">寄存器文件</text>
+  <rect x="680" y="744" width="16" height="16" rx="3" fill="#e0f2fe" stroke="#38bdf8"/>
+  <text x="704" y="757" font-size="11.5" fill="#475569">SM</text>
+
+  <text x="1160" y="790" text-anchor="end" font-size="10.5" fill="#94a3b8">数值以 GA102（RTX 3090）为例，其他架构结构相同、数量不同</text>
+</svg>
