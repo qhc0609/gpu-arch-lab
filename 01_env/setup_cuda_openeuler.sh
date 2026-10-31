@@ -8,7 +8,9 @@
 set -euo pipefail
 
 CUDA_VER="${CUDA_VER:-12.4.1}"
-CUDA_RUN="cuda_${CUDA_VER}_535.104.05_linux.run"
+# 注意：文件名里的 550.54.15 是 CUDA 12.4.1 配套的驱动版本。
+# 之前误写成 535.104.05（那是 CUDA 12.2 的驱动），会导致 404 下载失败。
+CUDA_RUN="cuda_${CUDA_VER}_550.54.15_linux.run"
 CUDA_URL="https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/${CUDA_RUN}"
 
 echo "==> [1/4] 安装编译依赖"
