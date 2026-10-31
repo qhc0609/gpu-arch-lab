@@ -1,0 +1,9 @@
+# 工程要跑在 Linux 上，强制脚本类文件用 LF，避免 Windows 检出后 shebang 失效
+* text=auto
+*.sh       text eol=lf
+*.cu       text eol=lf
+*.py       text eol=lf
+Makefile   text eol=lf
+*.md       text eol=lf
+*.svg      text eol=lf
+*.png      binary
